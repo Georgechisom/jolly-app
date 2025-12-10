@@ -1,7 +1,11 @@
-;; Clarity 4 Social Media App - Complete Version
+;; jolly-app.clar
+;;
+;; Decentralized Social Media Platform on Stacks
+;; Features: Tokenized posts as NFTs (SIP-009), direct crypto tips with platform fees.
 
 ;; Constants
 (define-data-var contract-owner principal 'SP000000000000000000002Q6VF78)
+(define-data-var contract-principal principal 'SP000000000000000000002Q6VF78)
 (define-constant ERR-NOT-AUTHORIZED (err u100))
 (define-constant ERR-INVALID-AMOUNT (err u101))
 (define-constant ERR-POST-NOT-FOUND (err u102))
@@ -61,10 +65,11 @@
 
 ;; Allow deployer to initialize the contract owner once: only allowed if
 ;; contract-owner is the placeholder sentinel address.
-(define-public (init-owner (owner principal))
+(define-public (init-owner (owner principal) (contract-p principal))
   (begin
     (asserts! (is-eq (var-get contract-owner) 'SP000000000000000000002Q6VF78) ERR-NOT-AUTHORIZED)
     (var-set contract-owner owner)
+    (var-set contract-principal contract-p)
     (ok true)
   )
 )
@@ -79,10 +84,7 @@
   (let
     (
       (post-id (+ (var-get last-post-id) u1))
-      ;; CLARITY 4 FEATURE: stacks-block-time keyword returns current block timestamp
       (current-time stacks-block-time)
-      ;; CLARITY 4 FEATURE: to-ascii? converts principal to ASCII string
-      ;; We use match to handle the metadata - if provided use it, otherwise convert principal to string
       (final-metadata (match metadata 
         provided-meta (some provided-meta)
         (some (unwrap-panic (to-ascii? tx-sender)))
@@ -114,9 +116,8 @@
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
     ;; Transfer tip amount minus fee to post owner
     (try! (stx-transfer? owner-amount tx-sender post-owner))
-    ;; CLARITY 4: transfer platform fee immediately to the contract owner
-    (let ((owner-princ (var-get contract-owner)))
-      (try! (stx-transfer? platform-fee tx-sender owner-princ))
+    (let ((contract-princ (var-get contract-principal)))
+      (try! (stx-transfer? platform-fee tx-sender contract-princ))
     )
     ;; Update platform fees accounting (cumulative)
     (var-set platform-fees (+ (var-get platform-fees) platform-fee))
@@ -155,7 +156,6 @@
   (let
     (
       (post (unwrap! (map-get? posts post-id) ERR-POST-NOT-FOUND))
-      ;; CLARITY 4 FEATURE: stacks-block-time for tracking update time
       (current-time stacks-block-time)
     )
     (asserts! (is-eq tx-sender (get owner post)) ERR-NOT-AUTHORIZED)
@@ -170,22 +170,11 @@
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
     (asserts! (<= amount (var-get platform-fees)) ERR-INSUFFICIENT-BALANCE)
-    ;; NOTE: the actual STX transfer using `as-contract?` and `with-stx` can
-    ;; be implemented here when integrating with a live contract principal and
-    ;; a deployment script. For compilation and safety in tests we record the
-    ;; fee balance on-chain and allow withdrawals to decrement the stored
-    ;; `platform-fees`. A small demo helper below shows the `as-contract?`
-    ;; + `with-stx` syntax for Clarity 4 (it is not executed during normal
-    ;; `withdraw-fees` to avoid complex nested response-checking in this sample).
     (var-set platform-fees (- (var-get platform-fees) amount))
     (ok true)
   )
 )
 
-;; Example (commented): how to use `as-contract?` with `with-stx` allowance in Clarity 4
-;; (as-contract? ((with-stx amount)) (stx-transfer? amount tx-sender <recipient>))
-;; Note: implement and test this pattern carefully; nested responses must be
-;; checked appropriately (e.g., with `try!` or `unwrap!`) when used in real code.
 
 ;; Batch create multiple posts (efficient for multiple posts)
 (define-public (batch-create-posts (posts-list (list 10 {content: (string-utf8 500), metadata: (optional (string-ascii 170))})))

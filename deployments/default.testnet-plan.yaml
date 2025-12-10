@@ -1,0 +1,16 @@
+---
+id: 0
+name: Testnet deployment
+network: testnet
+plan:
+  batches:
+    - id: 0
+      transactions:
+        - contract-publish:
+            contract-name: jolly-app
+            expected-sender: ST2CVPDX63RF1BPBRMY98K2F18ZJSVDGZ0K043AE6
+            cost: 72690
+            path: contracts/jolly-app.clar
+            anchor-block-only: true
+            clarity-version: 4
+      epoch: "3.3"
